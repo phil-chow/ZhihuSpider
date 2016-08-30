@@ -178,7 +178,7 @@ class UserinfoAndFollowee(object):
 
     def notfollowed(self):
         # followed不等于1
-        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1})
+        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(1000)
         need_search = [not_id["uid"] for not_id in not_followed]
         need_search_list = self.splitlist(need_search, 5)
         return need_search_list
