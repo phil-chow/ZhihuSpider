@@ -200,7 +200,10 @@ class UserinfoAndFollowee(object):
         length = len(search_list)
         for i in range(length):
             user_list = search_list[i]
+            # userinfo and usership
             t = threading.Thread(target=self.usersearch, args=(user_list,))
+            # userinfo single
+            # t = threading.Thread(target=self.singleuserinfo, args=(user_list,))
             threadlist.append(t)
         return threadlist
 
@@ -208,10 +211,25 @@ class UserinfoAndFollowee(object):
         for uid in userlist:
             self.getusership(uid)
 
+    def singleuserinfo(self, userlist):
+        for uid in userlist:
+            print "GET THIS GUY: --> ", uid
+            userinfo_url = "https://www.zhihu.com/people/" + uid
+            response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies).content
+            # print response
+            if response is None:
+                response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies, timeout=7).content
+            page = etree.HTML(response)
+            # 获取用户信息
+            if self.userinfo_db.find_one({"uid": uid}):
+                pass
+            else:
+                self.getuserinfo(uid, page)
+
 
 if __name__ == '__main__':
     uandf = UserinfoAndFollowee()
-    uandf.getusership('Phil_Chow')
+    # uandf.getusership('Phil_Chow')
     need_search_list = uandf.notfollowed()
     threads = uandf.make_threads(need_search_list)
     for th in threads:
