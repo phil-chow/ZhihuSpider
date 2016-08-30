@@ -16,7 +16,7 @@ class UserinfoAndFollowee(object):
     cf.read('config.ini')
     cookies = cf.items('cookies')
     cookies = dict(cookies)
-    mongoclient = pymongo.MongoClient()
+    mongoclient = pymongo.MongoClient('127.0.0.1', 27017)
     db = mongoclient.zhihu
     userinfo_db = db.userinfo
     usership_db = db.usership
@@ -31,6 +31,7 @@ class UserinfoAndFollowee(object):
 
     # 用户关系
     def getusership(self, userid):
+        print "GET THIS GUY: --> ", userid
         followee_url = "https://www.zhihu.com/people/" + userid + "/followees"
         response = self.session.get(followee_url, headers=self.headers, cookies=self.cookies).content
         # print response
@@ -38,16 +39,21 @@ class UserinfoAndFollowee(object):
             response = self.session.get(followee_url, headers=self.headers, cookies=self.cookies, timeout=7).content
         page = etree.HTML(response)
         # 获取用户信息
-        self.getuserinfo(userid, page)
-        user_urls = page.xpath('//h2/a[@class="zg-link"]/@href')
+        if self.userinfo_db.find_one({"uid": userid}):
+            pass
+        else:
+            self.getuserinfo(userid, page)
+        user_urls = page.xpath('//span[@class="author-link-line"]/a[@class="zg-link author-link"]/@href')
         # 获取用户的hash_id，用于动态获取更多关注人
         hash_id = page.xpath('//div[@class="zm-profile-header-op-btns clearfix"]/button/@data-id')[0]
         # 获取关注数®
-        followee_num = page.xpath('//div[@class="zm-profile-side-following zg-clear"]/a[1]/strong/text()')
+        followee_num = int(page.xpath('//div[@class="zm-profile-side-following zg-clear"]/a[1]/strong/text()')[0])
+        # print hash_id, followee_num, user_urls
         for u_url in user_urls:
             followee_id = u_url.split('/')[-1]
-            self.usership_db.update({"uid": userid}, {"addToSet": {"followee": followee_id}})
-            self.usership_db.update({"uid": followee_id}, {"addToSet": {"follower": userid}})
+            print "--| ", followee_id
+            self.usership_db.update({"uid": userid}, {"$addToSet": {"followee": followee_id}}, upsert=True)
+            self.usership_db.update({"uid": followee_id}, {"$addToSet": {"follower": userid}}, upsert=True)
         if followee_num > 20:
             self.doprofiles(followee_num, userid, hash_id)
         self.usership_db.update({"uid": userid}, {"$set": {"followed": 1}})
@@ -66,31 +72,18 @@ class UserinfoAndFollowee(object):
             'Pragma': 'no-cache',
             'Cache-Control': 'no-cache',
             'Referer': url,
-            'Content-Length': 171,
-            'Cookie': '''q_c1=f44da6a964464772a161717043512f25|1461649262000|1448978310000;
-                        __utma=51854390.317546768.1448978340.1462496554.1462501618.11;
-                        __utmz=51854390.1462501618.11.2.utmcsr=zhihu.com|utmccn=(referral)|utmcmd=referral|utmcct=/people/zhang-jia-wei;
-                        __utmv=51854390.100-2|2=registration_date=20151202=1^3=entry_date=20151201=1;
-                        _za=7f4faaab-c605-4466-9229-3d2d9a8a1390;
-                        z_c0=Mi4wQUJDTXpzbTNGd2tBTUFCbkhsblVDUmNBQUFCaEFsVk5mWXhHVndBdDlnTUN4REVtZEM2eVV4ZmtCLTNPRXZqQnpn|1461649277|551a373c4b185768c45727b7cfccc4dcff1e0ef4;
-                        cap_id="ZTQ0YTg0YmFlZTVkNGQyMWFlMTU1ZGU3YWQyYWU3ZmY=|1461649262|8bdfc73731a99086ad05126d2c826531d603b1c4";
-                        l_cap_id="NGJmNGQ2MTMyMzM1NDFkNTkzNDQ2ZTY1YWIzNWRhZjc=|1461649262|8477a56202c48f485ae9031347e5d2e63629d1cd";
-                        d_c0="ADAAZx5Z1AmPTtV0LZd9nuJSFQguxPEVfSw=|1461649263";
-                        _zap=c3effcd9-9a0f-407b-be36-5a4ccccb5500;
-                        login="YmQ3OWRlYmNjZWFiNGZjYzhjMDJkZDY3YTU2NTYwNWY=|1461649277|5ff75a661eacdf93d8e1bbe3678920d9a8ed8ce3";
-                        _xsrf=6a26f87695284ea5088220cd64f70f3a;
-                        __utmc=51854390;
-                        __utmb=51854390.6.10.1462501618; __utmt=1'''
+            'Content-Length': '132',
+            'Cookie': 'q_c1=7e569ff0fdb944fa9213a3149be8b52d|1472383585000|1472383585000; l_cap_id="ZDk5OTFjYWI5YjZkNGQ5NjlmYTZlZjcwOTNlMTU4MmI=|1472517294|b426487ad604d4051ec290b8a929a6a47ce02a0a"; cap_id="ZmFlYmVhYzY3YjQ3NDNhYjlhOTk4YzQ4YzNkYTY3Mzc=|1472517294|17bcded54321d6f53929721c0fc0bd6b9364f8c8"; d_c0="ABBAVU9NdAqPTvq1sQQDO46t11t_-w7p5Bc=|1472383586"; __utma=51854390.1216087745.1472467394.1472517280.1472524562.4; __utmz=51854390.1472524562.4.3.utmcsr=zhihu.com|utmccn=(referral)|utmcmd=referral|utmcct=/people/Phil_Chow; _za=c900c944-921f-497f-bba0-5978db428ab5; _zap=fb20b074-7c38-4bce-a0fc-d7c6cba18fb1; login="MGMxYzE2ZjkxNDNmNDFjOTgzMDU2MGE3NjlmYTNmODI=|1472517309|3e260a68fec09d3123acfc3b4b0dc043b3bf5c2b"; _xsrf=187ef073f29c851129ae42543d18582e; __utmv=51854390.100-1|2=registration_date=20151202=1^3=entry_date=20151202=1; __utmc=51854390; n_c=1; a_t="2.0ABCMzsm3FwkXAAAADX7sVwAQjM7JtxcJABBAVU9NdAoXAAAAYQJVTb1h7FcAhESn10FY6Wff0MVuCcoWI15zkc-FRVAT9NTK-SyFH68_Lakl9TOHIQ=="; z_c0=Mi4wQUJDTXpzbTNGd2tBRUVCVlQwMTBDaGNBQUFCaEFsVk52V0hzVndDRVJLZlhRVmpwWjlfUXhXNEp5aFlqWG5PUnp3|1472524557|15559b2c4e39c45eb6333210f18c7f8d322b067e; __utmb=51854390.2.10.1472524562; __utmt=1'
         }
-        xsrf = '6a26f87695284ea5088220cd64f70f3a'
+        xsrf = '187ef073f29c851129ae42543d18582e'
         # 计算页数，获取更多里面的关注者信息
         pages = attention / 20 + 1
         for x in xrange(1, pages):
             offset = x * 20
             params = json.dumps({"offset": offset, "order_by": "created", "hash_id": hash_id})
             payload = {"method": "next", "params": params, "_xsrf": xsrf}
-            content = self.session.post("https://www.zhihu.com/node/ProfileFolloweesListV2", headers=thisheader,
-                                        data=payload).content
+            content = self.session.post("https://www.zhihu.com/node/ProfileFolloweesListV2", headers=thisheader, data=payload).content
+            # print content
             try:
                 load = json.loads(content)
                 lists = load['msg']
@@ -100,12 +93,13 @@ class UserinfoAndFollowee(object):
                 try:
                     # print item
                     userpeople = re.search(r'people/[\w+\d+-]+', item)
-                    print userpeople
+                    # print userpeople
                     if userpeople is not None:
                         people = userpeople.group()
                         followee_id = people.split('/')[-1]
-                        self.usership_db.update({"uid": userid}, {"addToSet": {"followee": followee_id}})
-                        self.usership_db.update({"uid": followee_id}, {"addToSet": {"follower": userid}})
+                        print "---| ", followee_id
+                        self.usership_db.update({"uid": userid}, {"$addToSet": {"followee": followee_id}}, upsert=True)
+                        self.usership_db.update({"uid": followee_id}, {"$addToSet": {"follower": userid}}, upsert=True)
                 except AttributeError:
                     print "ERROR IN DoProfiles"
 
@@ -176,10 +170,7 @@ class UserinfoAndFollowee(object):
                          "follower": follower, "question_num": question_num, "answer_num": answer_num,
                          "agree_num": agree_num, "thanks_num": thanks_num
                          }
-            if self.userinfo_db.find_one({"uid": userid}):
-                self.userinfo_db.update({"uid": userid}, {"$set": user_info})
-            else:
-                self.userinfo_db.insert(user_info)
+            self.userinfo_db.insert(user_info)
         except etree.XMLSyntaxError:
             print "XMLSynError-----", userid
         except IndexError:
@@ -213,8 +204,8 @@ class UserinfoAndFollowee(object):
             threadlist.append(t)
         return threadlist
 
-    def usersearch(self, user_list):
-        for uid in user_list:
+    def usersearch(self, userlist):
+        for uid in userlist:
             self.getusership(uid)
 
 
@@ -227,3 +218,4 @@ if __name__ == '__main__':
         th.setDaemon(True)
         time.sleep(0.1)
         th.start()
+    th.join()
