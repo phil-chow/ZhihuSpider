@@ -192,6 +192,9 @@ class UserinfoAndFollowee(object):
             print "XMLSynError-----", userid
         except IndexError:
             print "IndexError------", userid
+            if page.xpath('//div[@class="page"]/div/@class')[0] == "error":
+                self.usership_db.remove({"uid": userid})
+                print "%s is removed!" % userid
 
     def notfollowed(self):
         # followed不等于1
