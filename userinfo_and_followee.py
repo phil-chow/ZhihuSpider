@@ -43,23 +43,43 @@ class UserinfoAndFollowee(object):
             pass
         else:
             self.getuserinfo(userid, page)
-        user_urls = page.xpath('//span[@class="author-link-line"]/a[@class="zg-link author-link"]/@href')
-        # 获取用户的hash_id，用于动态获取更多关注人
-        hash_id = page.xpath('//div[@class="zm-profile-header-op-btns clearfix"]/button/@data-id')[0]
-        # 获取关注数®
-        followee_num = int(page.xpath('//div[@class="zm-profile-side-following zg-clear"]/a[1]/strong/text()')[0])
-        # print hash_id, followee_num, user_urls
+        try:
+            user_urls = page.xpath('//span[@class="author-link-line"]/a[@class="zg-link author-link"]/@href')
+            # 获取用户的hash_id，用于动态获取更多关注人
+            hash_id = page.xpath('//div[@class="zm-profile-header-op-btns clearfix"]/button/@data-id')[0]
+            # 获取关注数®
+            followee_num = int(page.xpath('//div[@class="zm-profile-side-following zg-clear"]/a[1]/strong/text()')[0])
+            # print hash_id, followee_num, user_urls
+        except IndexError:
+            return
         for u_url in user_urls:
             followee_id = u_url.split('/')[-1]
             print "--| ", followee_id
             self.usership_db.update({"uid": userid}, {"$addToSet": {"followee": followee_id}}, upsert=True)
             self.usership_db.update({"uid": followee_id}, {"$addToSet": {"follower": userid}}, upsert=True)
         if followee_num > 20:
-            self.doprofiles(followee_num, userid, hash_id)
+            pages = followee_num / 20 + 1
+            offset_list = [x*20 for x in xrange(1, pages)]
+            if pages > 5:
+                offset_list_split = self.splitlist(offset_list, 5)
+                threadlist = list()
+                for offsets in offset_list_split:
+                    t = threading.Thread(target=self.dopro_thread, args=(offsets, userid, hash_id,))
+                    threadlist.append(t)
+                for t in threadlist:
+                    t.setDaemon(True)
+                    time.sleep(0.1)
+                    t.start()
+            else:
+                self.dopro_thread(offset_list, userid, hash_id)
         self.usership_db.update({"uid": userid}, {"$set": {"followed": 1}})
 
+    def dopro_thread(self, offsets, userid, hashid):
+        for offset in offsets:
+            self.doprofiles(offset, userid, hashid)
+
     # 动态获取“更多”里面的内容
-    def doprofiles(self, attention, userid, hash_id):
+    def doprofiles(self, offset, userid, hash_id):
         url = "https://www.zhihu.com/people/" + userid + "/followees"
         thisheader = {
             'Host': 'www.zhihu.com',
@@ -77,18 +97,13 @@ class UserinfoAndFollowee(object):
         }
         xsrf = '187ef073f29c851129ae42543d18582e'
         # 计算页数，获取更多里面的关注者信息
-        pages = attention / 20 + 1
-        for x in xrange(1, pages):
-            offset = x * 20
-            params = json.dumps({"offset": offset, "order_by": "created", "hash_id": hash_id})
-            payload = {"method": "next", "params": params, "_xsrf": xsrf}
-            content = self.session.post("https://www.zhihu.com/node/ProfileFolloweesListV2", headers=thisheader, data=payload).content
-            # print content
-            try:
-                load = json.loads(content)
-                lists = load['msg']
-            except ValueError:
-                continue
+        params = json.dumps({"offset": offset, "order_by": "created", "hash_id": hash_id})
+        payload = {"method": "next", "params": params, "_xsrf": xsrf}
+        content = self.session.post("https://www.zhihu.com/node/ProfileFolloweesListV2", headers=thisheader, data=payload).content
+        # print content
+        try:
+            load = json.loads(content)
+            lists = load['msg']
             for item in lists:
                 try:
                     # print item
@@ -102,6 +117,8 @@ class UserinfoAndFollowee(object):
                         self.usership_db.update({"uid": followee_id}, {"$addToSet": {"follower": userid}}, upsert=True)
                 except AttributeError:
                     print "ERROR IN DoProfiles"
+        except ValueError:
+            pass
 
     # 获取用户基本信息
     def getuserinfo(self, userid, page):
@@ -179,8 +196,11 @@ class UserinfoAndFollowee(object):
     def notfollowed(self):
         # followed不等于1
         not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(1000)
-        need_search = [not_id["uid"] for not_id in not_followed]
-        need_search_list = self.splitlist(need_search, 5)
+        # need_search = [not_id["uid"] for not_id in not_followed]
+        # userinfo single use
+        userinfoed = [usered["uid"] for usered in self.userinfo_db.find({}, {"_id": 0, "uid": 1})]
+        userinfo_need_search = [not_id["uid"] for not_id in not_followed if not_id["uid"] not in userinfoed]
+        need_search_list = self.splitlist(userinfo_need_search, 5)
         return need_search_list
 
     def splitlist(self, listosplit, num):
@@ -201,9 +221,9 @@ class UserinfoAndFollowee(object):
         for i in range(length):
             user_list = search_list[i]
             # userinfo and usership
-            t = threading.Thread(target=self.usersearch, args=(user_list,))
+            # t = threading.Thread(target=self.usersearch, args=(user_list,))
             # userinfo single
-            # t = threading.Thread(target=self.singleuserinfo, args=(user_list,))
+            t = threading.Thread(target=self.singleuserinfo, args=(user_list,))
             threadlist.append(t)
         return threadlist
 
@@ -222,7 +242,7 @@ class UserinfoAndFollowee(object):
             page = etree.HTML(response)
             # 获取用户信息
             if self.userinfo_db.find_one({"uid": uid}):
-                pass
+                continue
             else:
                 self.getuserinfo(uid, page)
 
@@ -231,6 +251,7 @@ if __name__ == '__main__':
     uandf = UserinfoAndFollowee()
     # uandf.getusership('Phil_Chow')
     need_search_list = uandf.notfollowed()
+    # uandf.usersearch(need_search_list)
     threads = uandf.make_threads(need_search_list)
     for th in threads:
         th.setDaemon(True)
