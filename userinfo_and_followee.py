@@ -25,8 +25,7 @@ class UserinfoAndFollowee(object):
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:48.0) Gecko/20100101 Firefox/48.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3",
-        "Connection": "keep-alive",
-        "Referer": "http://www.zhihu.com/oauth/callback/sina?state=04c9325f0f09f97ff480cba34c4c5e40&code=b2214d37d2dfdc350707699a74c13b42"
+        "Connection": "keep-alive"
     }
 
     # 用户关系
@@ -243,11 +242,14 @@ class UserinfoAndFollowee(object):
             print "GET THIS GUY: --> ", uid
             userinfo_url = "https://www.zhihu.com/people/" + uid
             try:
-                response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies).content
-                # print response
-                if response is None:
-                    response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies, timeout=7).content
-                page = etree.HTML(response)
+                response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies)
+                if response.status_code == 429:
+                    proxies = {
+                        "http": "http://122.96.59.104:80",
+                        "https": "http://119.188.94.145:80",
+                    }
+                    response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies, proxies=proxies, timeout=None)
+                page = etree.HTML(response.content)
                 # 获取用户信息
                 if self.userinfo_db.find_one({"uid": uid}):
                     continue
@@ -255,6 +257,8 @@ class UserinfoAndFollowee(object):
                     self.getuserinfo(uid, page)
             except etree.XMLSyntaxError:
                 print "XMLSynError-----", uid
+            except requests.exceptions.ReadTimeout:
+                print "ReadTimeOut--->", uid
 
 
 if __name__ == '__main__':
