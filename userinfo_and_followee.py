@@ -188,8 +188,6 @@ class UserinfoAndFollowee(object):
                          "agree_num": agree_num, "thanks_num": thanks_num
                          }
             self.userinfo_db.insert(user_info)
-        except etree.XMLSyntaxError:
-            print "XMLSynError-----", userid
         except IndexError:
             print "IndexError------", userid
             errortip = page.xpath('//div[@class="page"]/div/@class')
@@ -204,12 +202,12 @@ class UserinfoAndFollowee(object):
 
     def notfollowed(self):
         # followed不等于1
-        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(10000)
+        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(20000)
         # need_search = [not_id["uid"] for not_id in not_followed]
         # userinfo single use
         userinfoed = [usered["uid"] for usered in self.userinfo_db.find({}, {"_id": 0, "uid": 1})]
         userinfo_need_search = [not_id["uid"] for not_id in not_followed if not_id["uid"] not in userinfoed]
-        need_search_list = self.splitlist(userinfo_need_search, 5)
+        need_search_list = self.splitlist(userinfo_need_search, 10)
         return need_search_list
 
     def splitlist(self, listosplit, num):
@@ -244,16 +242,19 @@ class UserinfoAndFollowee(object):
         for uid in userlist:
             print "GET THIS GUY: --> ", uid
             userinfo_url = "https://www.zhihu.com/people/" + uid
-            response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies).content
-            # print response
-            if response is None:
-                response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies, timeout=7).content
-            page = etree.HTML(response)
-            # 获取用户信息
-            if self.userinfo_db.find_one({"uid": uid}):
-                continue
-            else:
-                self.getuserinfo(uid, page)
+            try:
+                response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies).content
+                # print response
+                if response is None:
+                    response = self.session.get(userinfo_url, headers=self.headers, cookies=self.cookies, timeout=7).content
+                page = etree.HTML(response)
+                # 获取用户信息
+                if self.userinfo_db.find_one({"uid": uid}):
+                    continue
+                else:
+                    self.getuserinfo(uid, page)
+            except etree.XMLSyntaxError:
+                print "XMLSynError-----", uid
 
 
 if __name__ == '__main__':
