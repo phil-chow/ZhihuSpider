@@ -192,13 +192,19 @@ class UserinfoAndFollowee(object):
             print "XMLSynError-----", userid
         except IndexError:
             print "IndexError------", userid
-            if page.xpath('//div[@class="page"]/div/@class')[0] == "error":
+            errortip = page.xpath('//div[@class="page"]/div/@class')
+            if len(errortip) > 0:
+                if errortip[0] == "error":
+                    self.usership_db.remove({"uid": userid})
+                    print "%s is removed because of error" % userid
+            else:
                 self.usership_db.remove({"uid": userid})
-                print "%s is removed!" % userid
+                print "%s is removed because of nothing" % userid
+
 
     def notfollowed(self):
         # followed不等于1
-        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(1000)
+        not_followed = self.usership_db.find({"followed": {"$ne": 1}}, {"_id": 0, "uid": 1}).limit(10000)
         # need_search = [not_id["uid"] for not_id in not_followed]
         # userinfo single use
         userinfoed = [usered["uid"] for usered in self.userinfo_db.find({}, {"_id": 0, "uid": 1})]
